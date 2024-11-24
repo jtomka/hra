@@ -6,9 +6,12 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 
-#include "matrix.h"
 #include "button.h"
 #include "event.h"
+#include "metronome.h"
+#include "matrix.h"
+
+//#include "ic74hc595.h"
 
 #define BUTTON_0_PIN GPIO_NUM_2
 #define BUTTON_1_PIN GPIO_NUM_4
@@ -24,13 +27,18 @@ button_t buttons[] = {
         { .pin = BUTTON_2_PIN }
 };
 
-bool timer_event_observer(void *data)
-{
-        usleep(10000);
-        return false;
-}
+matrix_t matrix = {
+        .clock_pin = MATRIX_CLOCK_PIN,
+        .signal_pin = MATRIX_SIGNAL_PIN,
+        .latch_pin = MATRIX_LATCH_PIN
+};
 
-bool buttons_event_observer(void *data)
+metronome_t metronome = {
+        .clock = 0,
+        .tick_len = 10
+};
+
+bool button_event_observer(void *data)
 {
         button_t *button;
 
@@ -42,52 +50,130 @@ bool buttons_event_observer(void *data)
         return button_status_has_changed(button);
 }
 
-void buttons_event_handler(void *data)
+void shift_two_bytes(uint8_t two[2])
+{
+        uint16_t one = (uint16_t) two[0] << 8 | two[1];
+
+        if (one == 0) {
+                one = 1U;
+        } else {
+                one = one << 1;
+                if (one == 0)
+                        one = 1U;
+        }
+        two[0] = one >> 8;
+        two[1] = one & 0xffU;
+}
+
+void button_event_handler(void *data)
 {
         button_t *button;
-        char *status_string = "";
-        long after_ms = 0;
 
         if (data == NULL)
                 return;
 
         button = (button_t *) data;
 
-        status_string = button->status ? "pressed" : "released";
-        after_ms = button->timestamp - button->prev_timestamp;
+        static uint8_t column[2] = { 0U, 0U };
+        static uint8_t row[2] = { 0U, 0U };
 
-        printf("Button [GPIO%d] %s after %ldms\n", button->pin, status_string, after_ms);
+        if (button->status)
+                return;
+
+        if (button->pin == BUTTON_1_PIN) {
+                shift_two_bytes(column);
+        }
+
+        if (button->pin == BUTTON_2_PIN) {
+                shift_two_bytes(row);
+        }
+
+        ic74hc595_send8bits(matrix.ic74hc595, row[0]);
+        ic74hc595_send8bits(matrix.ic74hc595, row[1]);
+        ic74hc595_send8bits(matrix.ic74hc595, column[0]);
+        ic74hc595_send8bits(matrix.ic74hc595, column[1]);
+        ic74hc595_latch(matrix.ic74hc595);
 }
 
-void app_main(void)
+bool metronome_event_observer(void *data)
 {
-        event_type_t timer_event_type = {
-                .observer = &timer_event_observer,
-                .handler = NULL,
-                .data = NULL
-        };
-        event_type_register(timer_event_type);
+        metronome_t *metronome;
 
+        if (data == NULL)
+                return false;
+
+        metronome = (metronome_t *) data;
+
+        return metronome_status_update(metronome);
+}
+
+void metronome_event_handler(void *data)
+{
+        usleep(10000);
+}
+
+void setup_metronome()
+{
+        metronome_init(&metronome);
+
+        event_type_t metronome_event_type = {
+                .observer = &metronome_event_observer,
+                .handler = &metronome_event_handler,
+                .data = &metronome
+        };
+        event_type_register(metronome_event_type);
+}
+
+void setup_buttons()
+{
         for (int i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
                 button_init(&buttons[i]);
 
                 event_type_t button_event_type = {
-                        .observer = &buttons_event_observer,
-                        .handler = &buttons_event_handler,
+                        .observer = &button_event_observer,
+                        .handler = &button_event_handler,
                         .data = &buttons[i]
                 };
                 event_type_register(button_event_type);
         }
+}
 
+bool matrix_event_observer(void *data)
+{
+        return true;
+}
 
-        matrix_t matrix = {
-                .signal_pin = MATRIX_SIGNAL_PIN,
-                .clock_pin = MATRIX_CLOCK_PIN,
-                .latch_pin = MATRIX_LATCH_PIN,
-                .width = 16,
-                .height = 16
-        };
+void matrix_event_handler(void *data)
+{
+        matrix_t *matrix;
+
+        if (data == NULL)
+                return;
+
+        matrix = (matrix_t *) data;
+
+        matrix_refresh(matrix);
+}
+
+void setup_matrix()
+{
         matrix_init(&matrix);
+
+        matrix_empty(&matrix);
+
+        event_type_t matrix_event_type = {
+                .observer = &matrix_event_observer,
+                .handler = &matrix_event_handler,
+                .data = &matrix
+        };
+        event_type_register(matrix_event_type);
+}
+
+void app_main(void)
+{
+        setup_buttons();
+        setup_matrix();
+        setup_metronome();
 
         event_loop();
 }
