@@ -8,7 +8,7 @@
 
 #include "button.h"
 #include "event.h"
-#include "metronome.h"
+#include "ticker.h"
 #include "matrix.h"
 
 //#include "ic74hc595.h"
@@ -30,7 +30,7 @@ button_t buttons[3];
 static matrix_t matrix;
 
 typedef struct {
-        metronome_t metronome;
+        ticker_t ticker;
 } game_t;
 
 static game_t game;
@@ -116,7 +116,7 @@ bool game_event_observer(void *data)
 
         game_t *game = (game_t *) data;
 
-        return metronome_check(&game->metronome);
+        return ticker_check(&game->ticker);
 }
 
 void game_event_handler(void *data)
@@ -153,8 +153,8 @@ void game_event_handler(void *data)
 
 void setup_game()
 {
-        game.metronome.tick_len = 25;
-        metronome_init(&game.metronome);
+        game.ticker.span = 25;
+        ticker_init(&game.ticker);
 
         event_type_t game_event_type = {
                 .observer = &game_event_observer,

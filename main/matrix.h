@@ -4,7 +4,7 @@
 #include "driver/gpio.h"
 
 #include "ic74hc595.h"
-#include "metronome.h"
+#include "ticker.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,7 +29,7 @@ typedef struct {
         uint8_t content[MATRIX_COLUMNS][MATRIX_ROWS];
 
         ic74hc595_t ic74hc595;
-        metronome_t refresh_clock;
+        ticker_t refresh_clock;
 } matrix_t;
 
 extern void matrix_init(matrix_t *matrix);

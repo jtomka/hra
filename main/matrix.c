@@ -22,8 +22,8 @@ void matrix_init(matrix_t *matrix)
         if (matrix == NULL)
                 return;
 
-        matrix->refresh_clock.tick_len = 1000 / MATRIX_REFRESH_RATE;
-        metronome_init(&matrix->refresh_clock);
+        matrix->refresh_clock.span = 1000 / MATRIX_REFRESH_RATE;
+        ticker_init(&matrix->refresh_clock);
 
         matrix->ic74hc595.signal_pin = matrix->signal_pin;
         matrix->ic74hc595.clock_pin = matrix->clock_pin;
@@ -140,7 +140,7 @@ void matrix_refresh(matrix_t *matrix)
 
         int needs_refresh;
 
-        needs_refresh = metronome_check(&matrix->refresh_clock);
+        needs_refresh = ticker_check(&matrix->refresh_clock);
         if (! needs_refresh)
                 return;
 
