@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <stdbool.h>
 #include <malloc.h>
 
@@ -62,6 +63,7 @@ void event_loop()
                                 this.handler(this.data);
                         }
                 }
+                usleep(10000);
         }
 }
 
