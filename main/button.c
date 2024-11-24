@@ -3,6 +3,8 @@
 #include "event.h"
 #include "button.h"
 
+#define BUTTON_STATUS_CHANGE_TOLERANCE 0
+
 void button_init(button_t *button)
 {
         if (button == NULL)
@@ -24,20 +26,28 @@ void button_init(button_t *button)
 
 bool button_status_has_changed(button_t *button)
 {
-        bool has_changed = false;
+        int new_status, diff;
+        clock_t now;
+        bool has_changed, long_enough_ago;
 
         if (button == NULL)
                 return false;
 
-        button->prev_status = button->status;
-        button->status = gpio_get_level(button->pin);
+        new_status = gpio_get_level(button->pin);
+        has_changed = (new_status != button->status);
 
-        has_changed = (button->status != button->prev_status);
-        if (has_changed) {
+        now = event_now();
+        diff = now - button->timestamp;
+        long_enough_ago = diff > BUTTON_STATUS_CHANGE_TOLERANCE;
+
+        if (has_changed && long_enough_ago) {
+                button->prev_status = button->status;
+                button->status = new_status;
+
                 button->prev_timestamp = button->timestamp;
-                button->timestamp = event_now();
+                button->timestamp = now;
         }
 
-        return has_changed;
+        return (has_changed && long_enough_ago);
 }
 
