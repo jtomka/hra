@@ -10,7 +10,7 @@ void metronome_init(metronome_t *metronome)
         metronome->clock = event_now();
 }
 
-bool metronome_status_update(metronome_t *metronome)
+bool metronome_check(metronome_t *metronome)
 {
         clock_t now, diff, tick_len_passed;
 
