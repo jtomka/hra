@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,7 +19,7 @@ extern void event_type_deregister_all();
 
 extern void event_loop();
 
-extern long event_now();
+extern clock_t event_now();
 
 #ifdef __cplusplus
 }
