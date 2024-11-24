@@ -14,6 +14,8 @@ typedef struct {
         void *data;
 } event_type_t;
 
+extern bool event_true();
+
 extern void event_type_register(event_type_t event_type);
 extern void event_type_deregister_all();
 

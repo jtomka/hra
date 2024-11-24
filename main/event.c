@@ -10,6 +10,11 @@ typedef struct {
 
 static event_config_t event_config = { .list = NULL, .length = 0 };
 
+bool event_true(void *data)
+{
+        return true;
+}
+
 void event_type_register(event_type_t event_type)
 {
         size_t new_size;
