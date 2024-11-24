@@ -1,3 +1,6 @@
+#ifndef MATRIX_H
+#define MATRIX_H
+
 #include "driver/gpio.h"
 
 #include "ic74hc595.h"
@@ -42,3 +45,6 @@ void matrix_refresh(matrix_t *matrix);
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* MATRIX_H */
+

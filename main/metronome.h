@@ -1,5 +1,5 @@
-#ifndef __METRONOME_H__
-#define __METRONOME_H__ 1
+#ifndef METRONOME_H
+#define METRONOME_H
 
 #include <stdbool.h>
 #include <time.h>
@@ -21,5 +21,5 @@ extern bool metronome_check(metronome_t *metronome);
 }
 #endif
 
-#endif /* __METRONOME_H__ */
+#endif /* METRONOME_H */
 

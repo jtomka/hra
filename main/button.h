@@ -1,3 +1,6 @@
+#ifndef BUTTON_H
+#define BUTTON_H
+
 #include <stdbool.h>
 
 #include "driver/gpio.h"
@@ -20,4 +23,6 @@ extern bool button_status_has_changed(button_t *button);
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* BUTTON_H */
 

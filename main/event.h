@@ -1,3 +1,6 @@
+#ifndef EVENT_H
+#define EVENT_H
+
 #include <stdbool.h>
 #include <time.h>
 
@@ -26,4 +29,6 @@ extern clock_t event_now();
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* EVENT_H */
 
