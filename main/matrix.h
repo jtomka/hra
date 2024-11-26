@@ -1,10 +1,12 @@
 #ifndef MATRIX_H
 #define MATRIX_H
 
+#include <stdbool.h>
+
 #include "driver/gpio.h"
 
-#include "ic74hc595.h"
 #include "ticker.h"
+#include "ic74hc595.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -21,26 +23,35 @@ extern "C" {
 #define MATRIX_REFRESH_RATE 60
 
 typedef struct {
+        bool status;
+        uint8_t intensity;
+        double intensity_counter;
+} pixel_t;
+
+typedef struct {
         gpio_num_t signal_pin;
         gpio_num_t clock_pin;
         gpio_num_t latch_pin;
-        int rotate;
+        uint8_t rotate;
 
-        uint8_t content[MATRIX_COLUMNS][MATRIX_ROWS];
+        pixel_t pixels[MATRIX_COLUMNS][MATRIX_ROWS];
 
         ic74hc595_t ic74hc595;
-        ticker_t refresh_clock;
+        ticker_t refresh_ticker;
 } matrix_t;
 
 extern void matrix_init(matrix_t *matrix);
 
-extern void matrix_dot_add(matrix_t *matrix, int column, int row);
+extern void matrix_clear(matrix_t *matrix);
 
-extern void matrix_dot_remove(matrix_t *matrix, int column, int row);
+extern void matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
+                         uint16_t x2, uint16_t y2, bool fill);
 
-extern void matrix_empty(matrix_t *matrix);
+#define matrix_point(matrix, x, y) matrix_block(matrix, x, y, x, y, true)
 
-void matrix_refresh(matrix_t *matrix);
+#define matrix_line(matrix, x1, y1, x2, y2) matrix_block(matrix, x1, y1, x2, y2, true)
+
+extern void matrix_refresh(matrix_t *matrix);
 
 #ifdef __cplusplus
 }

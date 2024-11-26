@@ -1,36 +1,33 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <unistd.h>
-#include <stdbool.h>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "driver/gpio.h"
 
+#include "blinker.h"
 #include "button.h"
 #include "event.h"
-#include "ticker.h"
 #include "matrix.h"
+#include "ticker.h"
 
-//#include "ic74hc595.h"
-
+#ifndef min
 #define min(a, b) ((a) < (b) ? a : b)
+#endif
 
 #define BUTTON_0_PIN GPIO_NUM_2
 #define BUTTON_1_PIN GPIO_NUM_4
 #define BUTTON_2_PIN GPIO_NUM_6
 
-button_t buttons[3];
-
 #define MATRIX_SIGNAL_PIN GPIO_NUM_12
 #define MATRIX_CLOCK_PIN GPIO_NUM_10
 #define MATRIX_LATCH_PIN GPIO_NUM_8
 
-#define MATRIX_REFRESH_RATE 60
-
-static matrix_t matrix;
-
 typedef struct {
+        button_t buttons[3];
+        matrix_t matrix;
+        uint8_t matrix_intensity;
         ticker_t ticker;
+        blinker_t blinker;
 } game_t;
 
 static game_t game;
@@ -58,21 +55,30 @@ void button_event_handler(void *data)
 
         if (button->status)
                 return;
+
+        if (button->pin == BUTTON_2_PIN) {
+                game.matrix_intensity += 10;
+                if (game.matrix_intensity > 100)
+                        game.matrix_intensity = 100;
+        } else if (button->pin == BUTTON_1_PIN) {
+                game.matrix_intensity += -10;
+        }
+printf("intensity %i\n", game.matrix_intensity);
 }
 
 void setup_buttons()
 {
-        buttons[0].pin = BUTTON_0_PIN;
-        buttons[1].pin = BUTTON_1_PIN;
-        buttons[2].pin = BUTTON_2_PIN;
+        game.buttons[0].pin = BUTTON_0_PIN;
+        game.buttons[1].pin = BUTTON_1_PIN;
+        game.buttons[2].pin = BUTTON_2_PIN;
 
-        for (int i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
-                button_init(&buttons[i]);
+        for (int i = 0; i < sizeof(game.buttons) / sizeof(game.buttons[0]); i++) {
+                button_init(&game.buttons[i]);
 
                 event_type_t button_event_type = {
                         .observer = &button_event_observer,
                         .handler = &button_event_handler,
-                        .data = &buttons[i]
+                        .data = &game.buttons[i]
                 };
                 event_type_register(button_event_type);
         }
@@ -92,19 +98,17 @@ void matrix_event_handler(void *data)
 
 void setup_matrix()
 {
-        matrix.clock_pin = MATRIX_CLOCK_PIN;
-        matrix.signal_pin = MATRIX_SIGNAL_PIN;
-        matrix.latch_pin = MATRIX_LATCH_PIN;
-        matrix.rotate = MATRIX_ROTATE_0;
+        game.matrix.clock_pin = MATRIX_CLOCK_PIN;
+        game.matrix.signal_pin = MATRIX_SIGNAL_PIN;
+        game.matrix.latch_pin = MATRIX_LATCH_PIN;
+        game.matrix.rotate = MATRIX_ROTATE_0;
 
-        matrix_init(&matrix);
-
-        matrix_empty(&matrix);
+        matrix_init(&game.matrix);
 
         event_type_t matrix_event_type = {
                 .observer = &event_true,
                 .handler = &matrix_event_handler,
-                .data = &matrix
+                .data = &game.matrix
         };
         event_type_register(matrix_event_type);
 }
@@ -119,19 +123,11 @@ bool game_event_observer(void *data)
         return ticker_check(&game->ticker);
 }
 
-void game_event_handler(void *data)
+void matrix_screensaver()
 {
         static int c = 0, r = 0, c_dir = 1, r_dir = 1;
-
-        if (c < 0) {
-                c = 0;
-                c_dir = 1;
-        }
-
-        if (c >= MATRIX_COLUMNS) {
-                c = MATRIX_COLUMNS - 1;
-                c_dir = -1;
-        }
+        pixel_t *pixel;
+        bool status;
 
         if (r < 0) {
                 r = 0;
@@ -145,16 +141,41 @@ void game_event_handler(void *data)
                 c += c_dir;
         }
         
-        matrix_empty(&matrix);
-        matrix_dot_add(&matrix, c, r);
+        if (c < 0) {
+                c = 0;
+                c_dir = 1;
+        }
+
+        if (c >= MATRIX_COLUMNS) {
+                c = MATRIX_COLUMNS - 1;
+                c_dir = -1;
+        }
+
+        pixel = &game.matrix.pixels[c][r];
+        status = blinker_check(&game.blinker);
+        pixel->status = status;
 
         r += r_dir;
 }
 
+void game_event_handler(void *data)
+{
+        matrix_clear(&game.matrix);
+
+        matrix_screensaver();
+}
+
 void setup_game()
 {
-        game.ticker.span = 25;
+        setup_buttons();
+        setup_matrix();
+        game.matrix_intensity = 100;
+
+        game.ticker.span = 30;
         ticker_init(&game.ticker);
+
+        game.blinker.on_len = 100;
+        blinker_init(&game.blinker);
 
         event_type_t game_event_type = {
                 .observer = &game_event_observer,
@@ -167,8 +188,6 @@ void setup_game()
 
 void app_main(void)
 {
-        setup_buttons();
-        setup_matrix();
         setup_game();
 
         event_loop();

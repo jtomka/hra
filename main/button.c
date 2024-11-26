@@ -1,6 +1,6 @@
 #include "driver/gpio.h"
 
-#include "event.h"
+#include "ticker.h"
 #include "button.h"
 
 #define BUTTON_STATUS_CHANGE_TOLERANCE 0
@@ -15,7 +15,7 @@ void button_init(button_t *button)
         gpio_wakeup_enable(button->pin, GPIO_INTR_HIGH_LEVEL);
 
         int init_status = 0;
-        long init_timestamp = event_now();
+        clock_t init_timestamp = ticker_now();
 
         button->status = init_status;
         button->prev_status = init_status;
@@ -36,7 +36,7 @@ bool button_status_has_changed(button_t *button)
         new_status = gpio_get_level(button->pin);
         has_changed = (new_status != button->status);
 
-        now = event_now();
+        now = ticker_now();
         diff = now - button->timestamp;
         long_enough_ago = diff > BUTTON_STATUS_CHANGE_TOLERANCE;
 

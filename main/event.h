@@ -2,7 +2,6 @@
 #define EVENT_H
 
 #include <stdbool.h>
-#include <time.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,8 +22,6 @@ extern void event_type_register(event_type_t event_type);
 extern void event_type_deregister_all();
 
 extern void event_loop();
-
-extern clock_t event_now();
 
 #ifdef __cplusplus
 }

@@ -6,7 +6,7 @@
 
 typedef struct {
         event_type_t *list;
-        int length;
+        uint16_t length;
 } event_config_t;
 
 static event_config_t event_config = { .list = NULL, .length = 0 };
@@ -65,9 +65,5 @@ void event_loop()
                 }
                 usleep(10000);
         }
-}
-
-clock_t event_now() {
-        return (clock_t) ((clock() * 1000) / CLOCKS_PER_SEC);
 }
 
