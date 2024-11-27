@@ -3,6 +3,10 @@
 
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define OBJECT_WEIGHT_MAX -1
 
 typedef struct {
@@ -24,6 +28,10 @@ extern double object_get_deflection_speed(object_t *object_1, object_t *object_2
 extern double object_get_deflection_direction(object_t *object_1, object_t *object_2);
 
 extern void object_update_location(object_t *object);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* OBJECT_H */
 
