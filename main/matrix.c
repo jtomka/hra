@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "ticker.h"
-
 #include "matrix.h"
+
+#define MATRIX_BRIGHTNESS_MIN 10
+#define MATRIX_BRIGHTNESS_MAX 50
 
 const uint32_t matrix_columns[] = {
         0x00001000UL, 0x10000000UL, 0x00080000UL, 0x00000200UL,
@@ -24,8 +25,10 @@ void matrix_init(matrix_t *matrix)
         if (matrix == NULL)
                 return;
 
-        matrix->refresh_ticker.span = 1000 / MATRIX_REFRESH_RATE;
-        ticker_init(&matrix->refresh_ticker);
+        matrix->brightness_pwm.adjust_min = MATRIX_BRIGHTNESS_MIN;
+        matrix->brightness_pwm.adjust_max = MATRIX_BRIGHTNESS_MAX;
+        matrix->brightness_pwm.duty_cycle = 100;
+        pwm_init(&matrix->brightness_pwm);
 
         matrix->ic74hc595.signal_pin = matrix->signal_pin;
         matrix->ic74hc595.clock_pin = matrix->clock_pin;
@@ -44,9 +47,87 @@ void matrix_clear(matrix_t *matrix)
 
         for (int i = 0; i < MATRIX_COLUMNS; i++) {
                 for (int j = 0; j < MATRIX_ROWS; j++) {
-                        matrix->pixels[i][j].status = false;
-                        matrix->pixels[i][j].intensity = 100;
+                        matrix->pixels[i][j].status = true;
                 }
+        }
+}
+
+bool matrix_apply_rotation(matrix_t *matrix, uint16_t column, uint16_t row)
+{
+        int c, r;
+        int rotation;
+
+        if (matrix == NULL)
+                return false;
+
+        if (column >= MATRIX_COLUMNS)
+                return false;
+
+        if (row >= MATRIX_ROWS)
+                return false;
+
+        rotation = matrix->rotation % 4;
+
+        // Portrait-landscape conversion not supported
+        if (MATRIX_COLUMNS != MATRIX_ROWS) {
+                if (rotation % 2 != 0) {
+                        return false;
+                }
+        }
+                
+        c = column;
+        r = row;
+
+        if (rotation == 1) {
+                c = row;
+                r = MATRIX_COLUMNS - column - 1;
+        }
+
+        if (rotation == 2) {
+                c = MATRIX_COLUMNS - column - 1;
+                r = MATRIX_ROWS - row - 1;
+        }
+
+        if (rotation == 3) {
+                c = MATRIX_ROWS - row - 1;
+                r = column;
+        }
+
+        return matrix->pixels[c][r].status;
+}
+
+void matrix_refresh(matrix_t *matrix)
+{
+	bool brightness_status;
+
+        if (matrix == NULL)
+                return;
+
+	brightness_status = pwm_check(&matrix->brightness_pwm);
+
+        for (int i = 0; i < MATRIX_COLUMNS; i++) {
+                uint32_t bits;
+
+                bits = matrix_columns[i];
+                for (int j = 0; j < MATRIX_ROWS; j++) {
+                        bool pixel_status;
+
+			pixel_status = brightness_status;
+
+			if (pixel_status)
+				pixel_status = matrix_apply_rotation(matrix, i, j);
+
+                        if (pixel_status) {
+                                bits = bits & ~matrix_rows[j];
+                        } else {
+                                bits = bits | matrix_rows[j];
+                        }
+                }
+
+                for (int k = 4; k > 0; k--) {
+                        ic74hc595_send8bits(&matrix->ic74hc595, ((uint8_t *) &bits)[k - 1]);
+                }
+                ic74hc595_latch(&matrix->ic74hc595);
         }
 }
 
@@ -89,121 +170,6 @@ void matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
                                 matrix->pixels[i][j].status = true;
                         }
                 }
-        }
-}
-
-bool matrix_apply_rotation(matrix_t *matrix, uint16_t column, uint16_t row)
-{
-        int c, r;
-        int rotate;
-
-        if (matrix == NULL)
-                return false;
-
-        if (column >= MATRIX_COLUMNS)
-                return false;
-
-        if (row >= MATRIX_ROWS)
-                return false;
-
-        rotate = matrix->rotate % 4;
-
-        // Portrait-landscape conversion not supported
-        if (MATRIX_COLUMNS != MATRIX_ROWS) {
-                if (rotate % 2 != 0) {
-                        return false;
-                }
-        }
-                
-        c = column;
-        r = row;
-
-        if (rotate == 1) {
-                c = row;
-                r = MATRIX_COLUMNS - column - 1;
-        }
-
-        if (rotate == 2) {
-                c = MATRIX_COLUMNS - column - 1;
-                r = MATRIX_ROWS - row - 1;
-        }
-
-        if (rotate == 3) {
-                c = MATRIX_ROWS - row - 1;
-                r = column;
-        }
-
-        return matrix->pixels[c][r].status;
-}
-
-bool matrix_apply_intensity(matrix_t *matrix, uint16_t column, uint16_t row)
-{
-        pixel_t *pixel;
-        double on_per_off;
-
-        if (matrix == NULL)
-                return false;
-
-        if (column >= MATRIX_COLUMNS)
-                return false;
-
-        if (row >= MATRIX_ROWS)
-                return false;
-
-        pixel = &matrix->pixels[column][row];
-
-        if (pixel->intensity == 0)
-                return false;
-
-        if (pixel->intensity >= 100)
-                return true;
-
-        on_per_off = (double) pixel->intensity / (100.0 - (double) pixel->intensity);
-        if (pixel->intensity_counter < 1) {
-                pixel->intensity_counter += on_per_off;
-        }
-
-        if (pixel->intensity_counter >= 1) {
-                pixel->intensity_counter--;
-                return true;
-        }
-
-        return false;
-}
-
-void matrix_refresh(matrix_t *matrix)
-{
-        if (matrix == NULL)
-                return;
-
-        bool needs_refresh;
-
-        needs_refresh = ticker_check(&matrix->refresh_ticker);
-        if (! needs_refresh)
-                return;
-
-        for (int i = 0; i < MATRIX_COLUMNS; i++) {
-                uint32_t bits;
-
-                bits = matrix_columns[i];
-                for (int j = 0; j < MATRIX_ROWS; j++) {
-                        bool status_on, intensity_on;
-
-                        status_on = matrix_apply_rotation(matrix, i, j);
-
-                        intensity_on = matrix_apply_intensity(matrix, i, j);
-
-                        if (status_on && intensity_on) {
-                                bits = bits & ~matrix_rows[j];
-                        } else {
-                                bits = bits | matrix_rows[j];
-                        }
-                }
-
-                for (int k = 4; k > 0; k--) {
-                        ic74hc595_send8bits(&matrix->ic74hc595, ((uint8_t *) &bits)[k - 1]);
-                }
-                ic74hc595_latch(&matrix->ic74hc595);
         }
 }
 
