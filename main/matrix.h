@@ -22,14 +22,22 @@ extern "C" {
 
 typedef struct {
         bool status;
+        uint8_t brightness;
+        uint8_t prev_brightness;
+
+        pwm_t brightness_pwm;
 } pixel_t;
 
 typedef struct {
         gpio_num_t signal_pin;
         gpio_num_t clock_pin;
         gpio_num_t latch_pin;
+
         uint8_t rotation;
-        pwm_t brightness_pwm;
+        uint8_t brightness;
+        uint8_t prev_brightness;
+        uint8_t brightness_adj_min;
+        uint8_t brightness_adj_max;
 
         pixel_t pixels[MATRIX_COLUMNS][MATRIX_ROWS];
 

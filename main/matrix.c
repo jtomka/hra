@@ -1,10 +1,10 @@
+#include <math.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "matrix.h"
+#include "ticker.h"
 
-#define MATRIX_BRIGHTNESS_MIN 10
-#define MATRIX_BRIGHTNESS_MAX 50
+#include "matrix.h"
 
 const uint32_t matrix_columns[] = {
         0x00001000UL, 0x10000000UL, 0x00080000UL, 0x00000200UL,
@@ -25,10 +25,8 @@ void matrix_init(matrix_t *matrix)
         if (matrix == NULL)
                 return;
 
-        matrix->brightness_pwm.adjust_min = MATRIX_BRIGHTNESS_MIN;
-        matrix->brightness_pwm.adjust_max = MATRIX_BRIGHTNESS_MAX;
-        matrix->brightness_pwm.duty_cycle = 100;
-        pwm_init(&matrix->brightness_pwm);
+        matrix->brightness = 100;
+        matrix->prev_brightness = 100 - matrix->brightness;
 
         matrix->ic74hc595.signal_pin = matrix->signal_pin;
         matrix->ic74hc595.clock_pin = matrix->clock_pin;
@@ -47,15 +45,20 @@ void matrix_clear(matrix_t *matrix)
 
         for (int i = 0; i < MATRIX_COLUMNS; i++) {
                 for (int j = 0; j < MATRIX_ROWS; j++) {
-                        matrix->pixels[i][j].status = true;
+                        pixel_t *pixel;
+
+                        pixel = &matrix->pixels[i][j];
+                        pixel->status = false;
+                        pixel->brightness = 100;
                 }
         }
 }
 
-bool matrix_apply_rotation(matrix_t *matrix, uint16_t column, uint16_t row)
+static inline pixel_t *matrix_apply_rotation_get_pixel(matrix_t *matrix,
+                                                       uint16_t column,
+                                                       uint16_t row)
 {
-        int c, r;
-        int rotation;
+        uint16_t c, r;
 
         if (matrix == NULL)
                 return false;
@@ -66,11 +69,12 @@ bool matrix_apply_rotation(matrix_t *matrix, uint16_t column, uint16_t row)
         if (row >= MATRIX_ROWS)
                 return false;
 
-        rotation = matrix->rotation % 4;
+        if (matrix->rotation > 3)
+                return false;
 
         // Portrait-landscape conversion not supported
         if (MATRIX_COLUMNS != MATRIX_ROWS) {
-                if (rotation % 2 != 0) {
+                if (matrix->rotation == 1 || matrix->rotation == 3) {
                         return false;
                 }
         }
@@ -78,49 +82,97 @@ bool matrix_apply_rotation(matrix_t *matrix, uint16_t column, uint16_t row)
         c = column;
         r = row;
 
-        if (rotation == 1) {
+        if (matrix->rotation == 1) {
                 c = row;
                 r = MATRIX_COLUMNS - column - 1;
-        }
 
-        if (rotation == 2) {
+        } else if (matrix->rotation == 2) {
                 c = MATRIX_COLUMNS - column - 1;
                 r = MATRIX_ROWS - row - 1;
-        }
 
-        if (rotation == 3) {
+        } else if (matrix->rotation == 3) {
                 c = MATRIX_ROWS - row - 1;
                 r = column;
         }
 
-        return matrix->pixels[c][r].status;
+        return &matrix->pixels[c][r];
+}
+
+static inline uint8_t matrix_get_pixel_brightness_duty_cycle(matrix_t *matrix,
+                                                             pixel_t *pixel)
+{
+        double matrix_brigtness;
+        double combined_brigtness;
+
+        matrix_brightness = matrix->brightness_adj_max - matrix->brightness_adj_min;
+        matrix_brightness *= matrix->brightness / 100;
+        matrix_brightness += matrix->brightness_adj_min;
+
+        combined_brightness = pixel->brightness * matrix_brightness / 100.0;
+        return combined_brightness;
+}
+
+static inline bool matrix_apply_brightness(matrix_t *matrix, pixel_t *pixel)
+{
+        bool matrix_brightness_changed;
+        bool pixel_brightness_changed;
+        bool brightness_status;
+
+        matrix_brightness_changed = false;
+        if (matrix->brightness != matrix->prev_brightness) {
+                matrix_brightness_changed = true;
+        }
+
+        pixel_brightness_changed = false;
+        if (pixel->brightness != pixel->prev_brightness) {
+                pixel_brightness_changed = true;
+        }
+
+        if (matrix_brightness_changed || pixel_brightness_changed) {
+                pixel_pwm->duty_cycle = matrix_get_pixel_brightness_duty_cycle(matrix, pixel);
+        }
+
+        brightness_status = pwm_check(pixel_pwm);
+        return brightness_status;
 }
 
 void matrix_refresh(matrix_t *matrix)
 {
-	bool brightness_status;
+static clock_t now = 0;
+static uint32_t cycles = 0;
+
+if (ticker_now() - now > 10000) {
+        printf("%f Hz\n", cycles / 10.0);
+        now = ticker_now();
+        cycles = 0;
+}
+cycles++;
 
         if (matrix == NULL)
                 return;
-
-	brightness_status = pwm_check(&matrix->brightness_pwm);
 
         for (int i = 0; i < MATRIX_COLUMNS; i++) {
                 uint32_t bits;
 
                 bits = matrix_columns[i];
                 for (int j = 0; j < MATRIX_ROWS; j++) {
+                        pixel_t *pixel;
                         bool pixel_status;
+                        bool brightness_status;
 
-			pixel_status = brightness_status;
+                        pixel = matrix_apply_rotation_get_pixel(matrix, i, j);
+                        pixel_status = pixel->status;
 
-			if (pixel_status)
-				pixel_status = matrix_apply_rotation(matrix, i, j);
+                        brightness_status = matrix_apply_brightness(matrix, pixel);
 
-                        if (pixel_status) {
+                        if (pixel_status && brightness_status) {
                                 bits = bits & ~matrix_rows[j];
                         } else {
                                 bits = bits | matrix_rows[j];
+                        }
+
+                        if (pixel->brightness != pixel->prev_brightness) {
+                                pixel->prev_brightness = pixel->brightness;
                         }
                 }
 
@@ -128,6 +180,10 @@ void matrix_refresh(matrix_t *matrix)
                         ic74hc595_send8bits(&matrix->ic74hc595, ((uint8_t *) &bits)[k - 1]);
                 }
                 ic74hc595_latch(&matrix->ic74hc595);
+        }
+
+        if (matrix->prev_brightness != matrix->brightness) {
+                matrix->prev_brightness = matrix->brightness;
         }
 }
 
