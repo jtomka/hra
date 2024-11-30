@@ -11,12 +11,12 @@ extern "C" {
 typedef struct {
         uint16_t span;
 
+        uint16_t prev_span;
         clock_t clock;
 } ticker_t ;
 
-clock_t ticker_now();
+extern clock_t ticker_now();
 
-extern void ticker_init(ticker_t *ticker);
 extern bool ticker_check(ticker_t *ticker);
 
 #ifdef __cplusplus
