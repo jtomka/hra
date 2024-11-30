@@ -2,8 +2,6 @@
 #include <stdbool.h>
 #include <malloc.h>
 
-#include "esp_task_wdt.h"
-
 #include "event.h"
 
 typedef struct {
@@ -46,19 +44,11 @@ void event_type_deregister_all()
 
 void event_loop()
 {
-	esp_task_wdt_config_t esp_task_wdt_config;
-
         if (event_config.list == NULL)
                 return;
 
         if (event_config.length == 0)
                 return;
-
-	esp_task_wdt_config.timeout_ms = 20000;
-	esp_task_wdt_config.idle_core_mask = 0b00; // TODO: how can we enable this?
-	esp_task_wdt_config.trigger_panic = false;
-	esp_task_wdt_reconfigure(&esp_task_wdt_config);
-        esp_task_wdt_add(NULL);
 
         while (true) {
                 for (int i = 0; i < event_config.length; i++) {
@@ -73,8 +63,6 @@ void event_loop()
                                 this.handler(this.data);
                         }
                 }
-                usleep(100);
-		esp_task_wdt_reset();
         }
 }
 
