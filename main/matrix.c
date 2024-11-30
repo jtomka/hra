@@ -101,14 +101,42 @@ static inline pixel_t *matrix_apply_rotation_get_pixel(matrix_t *matrix,
 static inline uint8_t matrix_get_pixel_brightness_duty_cycle(matrix_t *matrix,
                                                              pixel_t *pixel)
 {
-        double matrix_brigtness;
-        double combined_brigtness;
+        double matrix_brightness;
+        double combined_brightness;
+        uint8_t adj_min, adj_max;
 
-        matrix_brightness = matrix->brightness_adj_max - matrix->brightness_adj_min;
-        matrix_brightness *= matrix->brightness / 100;
-        matrix_brightness += matrix->brightness_adj_min;
+        if (matrix == NULL) {
+                return 0;
+        }
+        if (pixel == NULL) {
+                return 0;
+        }
+        if (matrix->brightness == 0) {
+                return 0;
+        }
+        if (pixel->brightness == 0) {
+                return 0;
+        }
+
+        adj_min = matrix->brightness_adj_min;
+        adj_max = matrix->brightness_adj_max;
+
+        if (adj_max == 0) {
+                adj_max = 100;
+        }
+        if (adj_max > 100) {
+                adj_max = 100;
+        }
+        if (adj_min >= adj_max) {
+                return 0;
+        }
+
+        matrix_brightness = adj_max - adj_min;
+        matrix_brightness *= (double) matrix->brightness / 100;
+        matrix_brightness += adj_min;
 
         combined_brightness = pixel->brightness * matrix_brightness / 100.0;
+
         return combined_brightness;
 }
 
@@ -116,6 +144,7 @@ static inline bool matrix_apply_brightness(matrix_t *matrix, pixel_t *pixel)
 {
         bool matrix_brightness_changed;
         bool pixel_brightness_changed;
+        pwm_t *pixel_pwm;
         bool brightness_status;
 
         matrix_brightness_changed = false;
@@ -128,6 +157,7 @@ static inline bool matrix_apply_brightness(matrix_t *matrix, pixel_t *pixel)
                 pixel_brightness_changed = true;
         }
 
+        pixel_pwm = &pixel->brightness_pwm;
         if (matrix_brightness_changed || pixel_brightness_changed) {
                 pixel_pwm->duty_cycle = matrix_get_pixel_brightness_duty_cycle(matrix, pixel);
         }
@@ -148,8 +178,15 @@ if (ticker_now() - now > 10000) {
 }
 cycles++;
 
+        bool matrix_brightness_changed;
+
         if (matrix == NULL)
                 return;
+
+        matrix_brightness_changed = false;
+        if (matrix->prev_brightness != matrix->brightness) {
+                matrix_brightness_changed = true;
+        }
 
         for (int i = 0; i < MATRIX_COLUMNS; i++) {
                 uint32_t bits;
@@ -182,7 +219,7 @@ cycles++;
                 ic74hc595_latch(&matrix->ic74hc595);
         }
 
-        if (matrix->prev_brightness != matrix->brightness) {
+        if (matrix_brightness_changed) {
                 matrix->prev_brightness = matrix->brightness;
         }
 }
