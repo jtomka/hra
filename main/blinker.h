@@ -17,7 +17,6 @@ typedef struct {
         ticker_t ticker;
 } blinker_t;
 
-extern void blinker_init(blinker_t *blinker);
 extern bool blinker_check(blinker_t *blinker);
 
 #ifdef __cplusplus
