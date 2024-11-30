@@ -2,7 +2,7 @@
 #define PWM_H
 
 #include <stdbool.h>
-#include <stdlib.h>
+#include <unistd.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,13 +11,11 @@ extern "C" {
 typedef struct {
         uint8_t duty_cycle;
 
-        uint8_t adjust_min;
-        uint8_t adjust_max;
-
+        uint8_t prev_duty_cycle;
+        double on_per_off;
         double counter;
 } pwm_t;
 
-extern void pwm_init(pwm_t *pwm);
 extern bool pwm_check(pwm_t *pwm);
 
 #ifdef __cplusplus
