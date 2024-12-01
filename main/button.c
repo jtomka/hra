@@ -1,53 +1,83 @@
-#include "driver/gpio.h"
+#include <errno.h>
 
 #include "ticker.h"
 #include "button.h"
 
-#define BUTTON_STATUS_CHANGE_TOLERANCE 0
-
-void button_init(button_t *button)
+static inline int16_t button_get_hold_time(button_t *button)
 {
-        if (button == NULL)
-                return;
+        if (button == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
-        gpio_set_direction(button->pin, GPIO_MODE_INPUT);
-        gpio_set_pull_mode(button->pin, GPIO_PULLDOWN_ONLY);
-        gpio_wakeup_enable(button->pin, GPIO_INTR_HIGH_LEVEL);
+        if (button->status == BUTTON_STATUS_RELEASE) {
+                return 0;
+        }
 
-        int init_status = 0;
-        clock_t init_timestamp = ticker_now();
+        if (button->status == BUTTON_STATUS_PRESS
+            && button->hold_time.init > 0) {
+                return button->hold_time.init;
+        }
 
-        button->status = init_status;
-        button->prev_status = init_status;
-
-        button->timestamp = init_timestamp;
-        button->prev_timestamp = init_timestamp;
+        return button->hold_time.repeat;
 }
 
-bool button_status_has_changed(button_t *button)
+bool button_check(button_t *button)
 {
-        int new_status, diff;
+        int level;
+        int16_t new_status;
+        int32_t diff;
         clock_t now;
-        bool has_changed, long_enough_ago;
 
-        if (button == NULL)
-                return false;
-
-        new_status = gpio_get_level(button->pin);
-        has_changed = (new_status != button->status);
+        if (button == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
         now = ticker_now();
-        diff = now - button->timestamp;
-        long_enough_ago = diff > BUTTON_STATUS_CHANGE_TOLERANCE;
+        if (now == -1) {
+                return -1;
+        }
 
-        if (has_changed && long_enough_ago) {
-                button->prev_status = button->status;
-                button->status = new_status;
+        if (button->timestamp == 0) { // Init
+                gpio_set_direction(button->pin, GPIO_MODE_INPUT);
+                gpio_set_pull_mode(button->pin, GPIO_PULLDOWN_ONLY);
+                gpio_wakeup_enable(button->pin, GPIO_INTR_HIGH_LEVEL);
 
-                button->prev_timestamp = button->timestamp;
+                button->status = BUTTON_STATUS_RELEASE;
                 button->timestamp = now;
         }
 
-        return (has_changed && long_enough_ago);
+        level = gpio_get_level(button->pin);
+        diff = now - button->timestamp;
+
+        new_status = -1;
+        if (level == BUTTON_STATUS_PRESS) {
+                if (button->status == BUTTON_STATUS_RELEASE) {
+                        new_status = BUTTON_STATUS_PRESS;
+                } else { // PRESS or HOLD
+                        int16_t hold_time;
+
+                        hold_time = button_get_hold_time(button);
+                        if (hold_time == -1) {
+                                return -1;
+                        }
+                        if (hold_time != 0 && diff >= hold_time) {
+                                new_status = BUTTON_STATUS_HOLD;
+                        }
+                }
+        } else if (level == BUTTON_STATUS_RELEASE) {
+                if (button->status != BUTTON_STATUS_RELEASE) {
+                        new_status = BUTTON_STATUS_RELEASE;
+                }
+        }
+
+        if (new_status == -1) {
+                return false;
+        }
+
+        button->status = new_status;
+        button->timestamp = now;
+        return true;
 }
 
