@@ -1,15 +1,46 @@
 #include <math.h>
+#include <sys/errno.h>
 
 #include "object.h"
 
+#ifndef x2
 #define x2(x) ((x) * (x))
+#endif
+
+#ifndef min
 #define min(a, b) (((a) < (b)) ? (a) : (b))
+#endif
+
+#ifndef max
 #define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 
 typedef struct {
         double width;
         double height;
 } rectangle_t;
+
+int8_t object_init_pixels(object_t *object)
+{
+        size_t new_size;
+
+        if (object == NULL) {
+                errno = EFAULT;
+                return -1; 
+        }
+
+        new_size = sizeof(object_pixel_t) * object->width * object->height;
+        object->pixels = (object_pixel_t *) realloc(object->pixels, new_size);
+
+        if (object->pixels == NULL) {
+                object->width = 0;
+                object->height = 0;
+
+                return -1;
+        }
+
+        return new_size;
+}
 
 /*
  * 1. Combine the two rectangles into one large rectangle
@@ -19,16 +50,23 @@ typedef struct {
  *    rectangles, the diagonal of this rectangle is the distance between the
  *    two rectangles.
  */
-void object_get_distance_rectangle(rectangle_t *rect, object_t *object_1, object_t *object_2)
+static inline int8_t object_distance_rectangle(
+                object_t *object_1, object_t *object_2, rectangle_t *result)
 {
         double x, y, width, height;
 
-        if (rect == NULL)
-                return;
-        if (object_1 == NULL)
-                return;
-        if (object_2 == NULL)
-                return;
+        if (object_1 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (object_2 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (result == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
         x = min(object_1->x, object_2->x);
         width = max(object_1->x + object_1->width, object_2->x + object_2->width);
@@ -42,53 +80,85 @@ void object_get_distance_rectangle(rectangle_t *rect, object_t *object_1, object
         height -= object_1->height + object_2->height;
         height = max(0, height);
 
-        rect->width = width;
-        rect->height = height;
+        result->width = width;
+        result->height = height;
+
+        return 0;
 }
 
-double object_get_distance(object_t *object_1, object_t *object_2)
+int8_t object_distance(object_t *object_1, object_t *object_2, double *result)
 {
         rectangle_t rect;
+        int8_t retval;
 
-        if (object_1 == NULL)
-                return 0;
-        if (object_2 == NULL)
-                return 0;
+        if (object_1 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (object_2 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (result == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
-        object_get_distance_rectangle(&rect, object_1, object_2);
+        retval = object_distance_rectangle(object_1, object_2, &rect);
+        if (retval == -1) {
+                return -1;
+        }
 
-        return sqrt(x2(rect.width) + x2(rect.height));
+        *result = sqrt(x2(rect.width) + x2(rect.height));
+        return 0;
 }
 
-double object_get_direction(object_t *object_1, object_t *object_2)
+int8_t object_direction(object_t *object_1, object_t *object_2, double *result)
 {
         rectangle_t rect;
+        int8_t retval;
         double diagonal;
 
-        if (object_1 == NULL)
-                return 0;
-        if (object_2 == NULL)
-                return 0;
+        if (object_1 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (object_2 == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (result == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
-        object_get_distance_rectangle(&rect, object_1, object_2);
+        retval = object_distance_rectangle(object_1, object_2, &rect);
+        if (retval == -1) {
+                return -1;
+        }
 
         diagonal = sqrt(x2(rect.width) + x2(rect.height));
 
         // TODO: adjust direction relative to object_1
-        return asin(rect.width / diagonal);
-}
-
-double object_get_deflection_speed(object_t *object_1, object_t *object_2)
-{
+        *result = asin(rect.width / diagonal);
         return 0;
 }
 
-double object_get_deflection_direction(object_t *object_1, object_t *object_2)
+int8_t object_deflection_speed(object_t *object_1, object_t *object_2, double *result)
 {
-        return 0;
+        errno = ENOTSUP;
+        return -1;
 }
 
-void object_update_location(object_t *object)
+int8_t object_deflection_direction(object_t *object_1, object_t *object_2, double *result)
 {
+        errno = ENOTSUP;
+        return -1;
+}
+
+int8_t object_update_location(object_t *object)
+{
+        errno = ENOTSUP;
+        return -1;
 }
 
