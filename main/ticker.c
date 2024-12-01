@@ -1,3 +1,4 @@
+#include <errno.h>
 
 #include "ticker.h"
 
@@ -11,10 +12,14 @@ bool ticker_check(ticker_t *ticker)
         bool span_passed;
 
         if (ticker == NULL) {
-                return false;
+                errno = EFAULT;
+                return -1;
         }
 
         now = ticker_now();
+        if (now == -1) {
+                return -1;
+        }
 
         if (ticker->span != ticker->prev_span) {
                 ticker->clock = now;
