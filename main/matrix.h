@@ -23,10 +23,10 @@ extern "C" {
 typedef struct {
         bool status;
         uint8_t brightness;
-        uint8_t prev_brightness;
 
+        uint8_t prev_brightness;
         pwm_t brightness_pwm;
-} pixel_t;
+} matrix_pixel_t;
 
 typedef struct {
         gpio_num_t signal_pin;
@@ -39,18 +39,18 @@ typedef struct {
         uint8_t brightness_adj_min;
         uint8_t brightness_adj_max;
 
-        pixel_t pixels[MATRIX_COLUMNS][MATRIX_ROWS];
+        matrix_pixel_t pixels[MATRIX_COLUMNS][MATRIX_ROWS];
 
         ic74hc595_t ic74hc595;
 } matrix_t;
 
-extern void matrix_init(matrix_t *matrix);
+extern int8_t matrix_init(matrix_t *matrix);
 
-extern void matrix_clear(matrix_t *matrix);
+extern int8_t matrix_clear(matrix_t *matrix);
 
-extern void matrix_refresh(matrix_t *matrix);
+extern int8_t matrix_refresh(matrix_t *matrix);
 
-extern void matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
+extern int8_t matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
                          uint16_t x2, uint16_t y2, bool fill);
 
 #define matrix_point(matrix, x, y) matrix_block(matrix, x, y, x, y, true)

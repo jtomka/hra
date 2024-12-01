@@ -1,6 +1,4 @@
-#include <math.h>
-#include <stdlib.h>
-#include <unistd.h>
+#include <errno.h>
 
 #include "ticker.h"
 
@@ -20,10 +18,34 @@ const uint32_t matrix_rows[] = {
         0x00200000UL, 0x00400000UL, 0x01000000UL, 0x00100000UL
 };
 
-void matrix_init(matrix_t *matrix)
+int8_t matrix_clear(matrix_t *matrix)
 {
-        if (matrix == NULL)
-                return;
+        if (matrix == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+
+        for (int i = 0; i < MATRIX_COLUMNS; i++) {
+                for (int j = 0; j < MATRIX_ROWS; j++) {
+                        matrix_pixel_t *pixel;
+
+                        pixel = &matrix->pixels[i][j];
+                        pixel->status = false;
+                        pixel->brightness = 100;
+                }
+        }
+
+        return 0;
+}
+
+int8_t matrix_init(matrix_t *matrix)
+{
+        int8_t retval;
+
+        if (matrix == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
         matrix->brightness = 100;
         matrix->prev_brightness = 100 - matrix->brightness;
@@ -33,64 +55,62 @@ void matrix_init(matrix_t *matrix)
         matrix->ic74hc595.latch_pin = matrix->latch_pin;
         matrix->ic74hc595.send_mode = IC74HC595_SEND_MODE_MSB_FIRST;
 
-        ic74hc595_init(&matrix->ic74hc595);
-
-        matrix_clear(matrix);
-}
-
-void matrix_clear(matrix_t *matrix)
-{
-        if (matrix == NULL)
-                return;
-
-        for (int i = 0; i < MATRIX_COLUMNS; i++) {
-                for (int j = 0; j < MATRIX_ROWS; j++) {
-                        pixel_t *pixel;
-
-                        pixel = &matrix->pixels[i][j];
-                        pixel->status = false;
-                        pixel->brightness = 100;
-                }
+        retval = ic74hc595_init(&matrix->ic74hc595);
+        if (retval == -1) {
+                return -1;
         }
+
+        retval = matrix_clear(matrix);
+        if (retval == -1) {
+                return -1;
+        }
+
+        return 0;
 }
 
-static inline pixel_t *matrix_apply_rotation_get_pixel(matrix_t *matrix,
-                                                       uint16_t column,
-                                                       uint16_t row)
+static inline matrix_pixel_t *matrix_apply_rotation_get_pixel(
+                        matrix_t *matrix, uint8_t column, uint8_t row)
 {
-        uint16_t c, r;
+        uint8_t rotation;
+        uint8_t c, r;
 
-        if (matrix == NULL)
-                return false;
+        if (matrix == NULL) {
+                errno = EFAULT;
+                return NULL;
+        }
+        if (column >= MATRIX_COLUMNS) {
+                errno = EINVAL;
+                return NULL;
+        }
+        if (row >= MATRIX_ROWS) {
+                errno = EINVAL;
+                return NULL;
+        }
 
-        if (column >= MATRIX_COLUMNS)
-                return false;
-
-        if (row >= MATRIX_ROWS)
-                return false;
-
-        if (matrix->rotation > 3)
-                return false;
-
+        rotation = matrix->rotation;
+        if (rotation > 3) {
+                rotation = rotation % 4;
+        }
         // Portrait-landscape conversion not supported
         if (MATRIX_COLUMNS != MATRIX_ROWS) {
-                if (matrix->rotation == 1 || matrix->rotation == 3) {
-                        return false;
+                if (rotation == 1 || rotation == 3) {
+                        errno = ENOTSUP;
+                        return NULL;
                 }
         }
                 
         c = column;
         r = row;
 
-        if (matrix->rotation == 1) {
+        if (rotation == 1) {
                 c = row;
                 r = MATRIX_COLUMNS - column - 1;
 
-        } else if (matrix->rotation == 2) {
+        } else if (rotation == 2) {
                 c = MATRIX_COLUMNS - column - 1;
                 r = MATRIX_ROWS - row - 1;
 
-        } else if (matrix->rotation == 3) {
+        } else if (rotation == 3) {
                 c = MATRIX_ROWS - row - 1;
                 r = column;
         }
@@ -98,19 +118,22 @@ static inline pixel_t *matrix_apply_rotation_get_pixel(matrix_t *matrix,
         return &matrix->pixels[c][r];
 }
 
-static inline uint8_t matrix_get_pixel_brightness_duty_cycle(matrix_t *matrix,
-                                                             pixel_t *pixel)
+static inline int8_t matrix_get_pixel_brightness_duty_cycle(
+                        matrix_t *matrix, matrix_pixel_t *pixel)
 {
         double matrix_brightness;
         double combined_brightness;
         uint8_t adj_min, adj_max;
 
         if (matrix == NULL) {
-                return 0;
+                errno = EFAULT;
+                return -1;
         }
         if (pixel == NULL) {
-                return 0;
+                errno = EFAULT;
+                return -1;
         }
+
         if (matrix->brightness == 0) {
                 return 0;
         }
@@ -128,7 +151,8 @@ static inline uint8_t matrix_get_pixel_brightness_duty_cycle(matrix_t *matrix,
                 adj_max = 100;
         }
         if (adj_min >= adj_max) {
-                return 0;
+                errno = EINVAL;
+                return -1;
         }
 
         matrix_brightness = adj_max - adj_min;
@@ -140,12 +164,21 @@ static inline uint8_t matrix_get_pixel_brightness_duty_cycle(matrix_t *matrix,
         return combined_brightness;
 }
 
-static inline bool matrix_apply_brightness(matrix_t *matrix, pixel_t *pixel)
+static inline bool matrix_apply_brightness(matrix_t *matrix, matrix_pixel_t *pixel)
 {
         bool matrix_brightness_changed;
         bool pixel_brightness_changed;
         pwm_t *pixel_pwm;
         bool brightness_status;
+
+        if (matrix == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
+        if (pixel == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
         matrix_brightness_changed = false;
         if (matrix->brightness != matrix->prev_brightness) {
@@ -159,14 +192,20 @@ static inline bool matrix_apply_brightness(matrix_t *matrix, pixel_t *pixel)
 
         pixel_pwm = &pixel->brightness_pwm;
         if (matrix_brightness_changed || pixel_brightness_changed) {
-                pixel_pwm->duty_cycle = matrix_get_pixel_brightness_duty_cycle(matrix, pixel);
+                int8_t retval;
+
+                retval = matrix_get_pixel_brightness_duty_cycle(matrix, pixel);
+                if (retval == -1) {
+                        return -1;
+                }
+                pixel_pwm->duty_cycle = retval;
         }
 
         brightness_status = pwm_check(pixel_pwm);
         return brightness_status;
 }
 
-void matrix_refresh(matrix_t *matrix)
+int8_t matrix_refresh(matrix_t *matrix)
 {
 static clock_t now = 0;
 static uint32_t cycles = 0;
@@ -180,8 +219,10 @@ cycles++;
 
         bool matrix_brightness_changed;
 
-        if (matrix == NULL)
-                return;
+        if (matrix == NULL) {
+                errno = EINVAL;
+                return -1;
+        }
 
         matrix_brightness_changed = false;
         if (matrix->prev_brightness != matrix->brightness) {
@@ -190,17 +231,24 @@ cycles++;
 
         for (int i = 0; i < MATRIX_COLUMNS; i++) {
                 uint32_t bits;
+                int retval;
 
                 bits = matrix_columns[i];
                 for (int j = 0; j < MATRIX_ROWS; j++) {
-                        pixel_t *pixel;
+                        matrix_pixel_t *pixel;
                         bool pixel_status;
-                        bool brightness_status;
+                        int8_t brightness_status;
 
                         pixel = matrix_apply_rotation_get_pixel(matrix, i, j);
+                        if (pixel == NULL) {
+                                return -1;
+                        }
                         pixel_status = pixel->status;
 
                         brightness_status = matrix_apply_brightness(matrix, pixel);
+                        if (brightness_status == -1) {
+                                return -1;
+                        }
 
                         if (pixel_status && brightness_status) {
                                 bits = bits & ~matrix_rows[j];
@@ -214,33 +262,52 @@ cycles++;
                 }
 
                 for (int k = 4; k > 0; k--) {
-                        ic74hc595_send8bits(&matrix->ic74hc595, ((uint8_t *) &bits)[k - 1]);
+                        retval = ic74hc595_send8bits(&matrix->ic74hc595,
+                            ((uint8_t *) &bits)[k - 1]);
+                        if (retval == -1) {
+                                return -1;
+                        }
                 }
-                ic74hc595_latch(&matrix->ic74hc595);
+                retval = ic74hc595_latch(&matrix->ic74hc595);
+                if (retval == -1) {
+                        return -1;
+                }
         }
 
         if (matrix_brightness_changed) {
                 matrix->prev_brightness = matrix->brightness;
         }
+
+        return 0;
 }
 
-void matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
+int8_t matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
                   uint16_t x2, uint16_t y2, bool fill)
 {
-        if (matrix == NULL)
-                return;
+        if (matrix == NULL) {
+                errno = EFAULT;
+                return -1;
+        }
 
-        if (x1 >= MATRIX_COLUMNS)
-                return;
+        if (x1 >= MATRIX_COLUMNS) {
+                errno = EINVAL;
+                return -1;
+        }
 
-        if (y1 >= MATRIX_ROWS)
-                return;
+        if (y1 >= MATRIX_ROWS) {
+                errno = EINVAL;
+                return -1;
+        }
 
-        if (x2 >= MATRIX_COLUMNS)
-                return;
+        if (x2 >= MATRIX_COLUMNS) {
+                errno = EINVAL;
+                return -1;
+        }
 
-        if (y2 >= MATRIX_ROWS)
-                return;
+        if (y2 >= MATRIX_ROWS) {
+                errno = EINVAL;
+                return -1;
+        }
 
         if (x1 > x2) {
                 int tmp;
@@ -264,5 +331,7 @@ void matrix_block(matrix_t *matrix, uint16_t x1, uint16_t y1,
                         }
                 }
         }
+
+        return 0;
 }
 
