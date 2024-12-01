@@ -1,15 +1,17 @@
-#include <stdio.h>
+#include <errno.h>
 
 #include "pwm.h"
 
 bool pwm_check(pwm_t *pwm)
 {
         if (pwm == NULL) {
-                return false;
+                errno = EFAULT;
+                return -1;
         }
 
         if (pwm->duty_cycle == 0) {
-                return false;
+                errno = EFAULT;
+                return -1;
         }
 
         if (pwm->duty_cycle >= 100) {

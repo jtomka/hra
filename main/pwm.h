@@ -2,7 +2,6 @@
 #define PWM_H
 
 #include <stdbool.h>
-#include <unistd.h>
 
 #ifdef __cplusplus
 extern "C" {
